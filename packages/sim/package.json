@@ -1,0 +1,14 @@
+{
+  "name": "@hitstop/sim",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Deterministic, render-free fighting game simulation",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run"
+  }
+}

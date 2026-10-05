@@ -17,10 +17,19 @@ export interface Box {
   readonly h: number;
 }
 
-export interface AttackData {
+/** Timing of a move, in frames. */
+export interface Timing {
   readonly startup: number;
   readonly active: number;
   readonly recovery: number;
+}
+
+export function totalFrames(timing: Timing): number {
+  return timing.startup + timing.active + timing.recovery;
+}
+
+/** What happens to the defender on contact. */
+export interface HitProperties {
   readonly damage: number;
   /** Frames the defender cannot act after being hit (ignored when `knockdown` is set). */
   readonly hitstun: number;
@@ -32,6 +41,8 @@ export interface AttackData {
   readonly knockdown: boolean;
   readonly hitbox: Box;
 }
+
+export interface AttackData extends Timing, HitProperties {}
 
 export const STAGE_WIDTH = px(1200);
 export const START_DISTANCE = px(400);
@@ -111,12 +122,9 @@ export const RUSH: AttackData = {
 export const RUSH_SPEED = px(11);
 
 /** Projectile throw (QCF + attack). The projectile spawns on the last startup frame. */
-export const PROJECTILE_THROW = { startup: 13, active: 1, recovery: 32 } as const;
+export const PROJECTILE_THROW: Timing = { startup: 13, active: 1, recovery: 32 };
 
-export const PROJECTILE: AttackData = {
-  startup: 0,
-  active: 0,
-  recovery: 0,
+export const PROJECTILE: HitProperties = {
   damage: 60,
   hitstun: 18,
   blockstun: 14,

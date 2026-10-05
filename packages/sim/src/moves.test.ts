@@ -12,17 +12,20 @@ import {
   RUSH,
   STAGE_WIDTH,
   SUBPIXELS,
+  totalFrames,
 } from "./character.ts";
 import { Button, type FrameInput } from "./input.ts";
-import { Action, createInitialState, Result, type State, serialize } from "./state.ts";
+import { ROUND_FRAMES, ROUND_INTRO_FRAMES, ROUND_OVER_FRAMES } from "./rules.ts";
+import { Action, createInitialState, Phase, Result, type State, serialize } from "./state.ts";
 import { step } from "./step.ts";
 
 const { Up, Down, Left, Right, Light, Heavy } = Button;
 const NONE: FrameInput = [0, 0];
 
-/** Initial state with the players `distance` pixels apart, centered. */
+/** Fight already started, with the players `distance` pixels apart, centered. */
 function setup(distance: number): State {
   const state = createInitialState();
+  state.phase = Phase.Fight;
   const center = STAGE_WIDTH / 2;
   state.fighters[0].x = center - (distance * SUBPIXELS) / 2;
   state.fighters[1].x = center + (distance * SUBPIXELS) / 2;
@@ -92,7 +95,7 @@ describe("normal attacks", () => {
         (s) => s.frame > contact + 1 && isActionable(s.fighters[1].action),
       );
       const stun = blocking ? LIGHT.blockstun : LIGHT.hitstun;
-      const attackerRemaining = LIGHT.startup + LIGHT.active + LIGHT.recovery - (LIGHT.startup - 1);
+      const attackerRemaining = totalFrames(LIGHT) - (LIGHT.startup - 1);
       expect(defenderFree - attackerFree).toBe(stun - attackerRemaining);
     }
   });
@@ -186,8 +189,7 @@ describe("motion inputs", () => {
   });
 
   it("allows one projectile at a time: the motion gives a normal attack instead", () => {
-    const throwFrames =
-      PROJECTILE_THROW.startup + PROJECTILE_THROW.active + PROJECTILE_THROW.recovery;
+    const throwFrames = totalFrames(PROJECTILE_THROW);
     const states = play(setup(800), [
       ...quarterCircleForward,
       ...repeat(NONE, throwFrames),
@@ -261,15 +263,70 @@ describe("movement", () => {
   });
 });
 
-describe("end of match", () => {
-  it("ends on KO and freezes the match afterwards", () => {
+describe("rounds", () => {
+  it("ignores inputs during the round intro, then starts the fight", () => {
+    const states = play(createInitialState(), repeat([Right, 0], ROUND_INTRO_FRAMES + 5));
+    const start = createInitialState().fighters[0].x;
+    expect(states[ROUND_INTRO_FRAMES - 2]?.fighters[0].x).toBe(start);
+    expect(states[ROUND_INTRO_FRAMES - 1]?.phase).toBe(Phase.Fight);
+    expect(last(states).fighters[0].x).toBeGreaterThan(start);
+  });
+
+  it("gives the round to the player still standing after a KO, then starts the next one", () => {
     const state = setup(100);
     state.fighters[1].health = LIGHT.damage;
-    const states = play(state, [[Light, 0], ...repeat(NONE, 3), [Light | Right, Left | Heavy]]);
+    const states = play(state, [[Light, 0], ...repeat(NONE, 3 + ROUND_OVER_FRAMES)]);
     const ko = states[3];
-    expect(ko?.result).toBe(Result.Player1Wins);
+    expect(ko?.phase).toBe(Phase.RoundOver);
     expect(ko?.fighters[1].action).toBe(Action.Ko);
+    expect(ko?.wins).toEqual([1, 0]);
+    const next = last(states);
+    expect(next.phase).toBe(Phase.Intro);
+    expect(next.round).toBe(2);
+    expect(next.timer).toBe(ROUND_FRAMES);
+    expect(next.fighters.map((f) => f.health)).toEqual([MAX_HEALTH, MAX_HEALTH]);
+    expect(next.result).toBe(Result.Ongoing);
+  });
+
+  it("gives the round to the healthier player when time runs out, to both on a tie", () => {
+    for (const [health0, health1, wins] of [
+      [500, 400, [1, 0]],
+      [400, 500, [0, 1]],
+      [500, 500, [1, 1]],
+    ] as const) {
+      const state = setup(400);
+      state.timer = 1;
+      state.fighters[0].health = health0;
+      state.fighters[1].health = health1;
+      const [after] = play(state, [NONE]);
+      expect(after?.phase).toBe(Phase.RoundOver);
+      expect(after?.wins).toEqual(wins);
+    }
+  });
+
+  it("ends the match at two rounds won and freezes it", () => {
+    const state = setup(100);
+    state.wins = [1, 1];
+    state.fighters[1].health = LIGHT.damage;
+    const states = play(state, [
+      [Light, 0],
+      ...repeat(NONE, 3 + ROUND_OVER_FRAMES),
+      [Light | Right, Left | Heavy],
+    ]);
+    const over = states.at(-2);
+    expect(over?.phase).toBe(Phase.MatchOver);
+    expect(over?.result).toBe(Result.Player1Wins);
+    expect(over?.wins).toEqual([2, 1]);
     const after = last(states);
-    expect(serialize(after).subarray(1)).toEqual(ko && serialize(ko).subarray(1));
+    expect(serialize(after).subarray(1)).toEqual(over && serialize(over).subarray(1));
+  });
+
+  it("disables hits once the round is over", () => {
+    const state = setup(100);
+    state.phase = Phase.RoundOver;
+    Object.assign(state.fighters[0], { action: Action.Light, actionFrame: LIGHT.startup - 2 });
+    const [active] = play(state, [NONE]);
+    expect(active?.fighters[0].actionFrame).toBe(LIGHT.startup - 1);
+    expect(active?.fighters[1].health).toBe(MAX_HEALTH);
   });
 });

@@ -1,4 +1,4 @@
-// Helpers shared by the test files. Not exported from the package.
+// Helpers shared by the tests, exported as "@hitstop/sim/testing" (not part of the game API).
 import { STAGE_WIDTH } from "./character.ts";
 import { Button, type FrameInput, type Input } from "./input.ts";
 import { Result, type State } from "./state.ts";
@@ -68,20 +68,20 @@ export function swapFrameInput([a, b]: FrameInput): FrameInput {
   return [b, a];
 }
 
-/** The same state seen in a mirror: positions, speeds, facings and left/right inputs flipped. */
+/**
+ * The same state seen in a mirror: positions, speeds, facings and left/right inputs flipped.
+ * `0 - v` rather than `-v` avoids -0, which would make equal states look different in diffs.
+ */
 export function mirrorState(state: State): State {
   const fighter = (f: State["fighters"][number]) => ({
     ...f,
     x: STAGE_WIDTH - f.x,
-    vx: -f.vx,
-    facing: -f.facing,
-    jumpDirection: -f.jumpDirection,
+    vx: 0 - f.vx,
+    facing: 0 - f.facing,
+    jumpDirection: 0 - f.jumpDirection,
   });
-  const projectile = (p: State["projectiles"][number]) => ({
-    ...p,
-    x: STAGE_WIDTH - p.x,
-    vx: -p.vx,
-  });
+  const projectile = (p: State["projectiles"][number]) =>
+    p.active === 1 ? { ...p, x: STAGE_WIDTH - p.x, vx: 0 - p.vx } : { ...p };
   return {
     ...state,
     fighters: [fighter(state.fighters[0]), fighter(state.fighters[1])],
@@ -101,6 +101,7 @@ export function swapState(state: State): State {
   return {
     ...state,
     result,
+    wins: [state.wins[1], state.wins[0]],
     fighters: [{ ...state.fighters[1] }, { ...state.fighters[0] }],
     projectiles: [{ ...state.projectiles[1] }, { ...state.projectiles[0] }],
     inputHistory: [[...state.inputHistory[1]], [...state.inputHistory[0]]],

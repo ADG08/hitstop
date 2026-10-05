@@ -1,20 +1,23 @@
 import {
-  type AttackData,
+  attackData,
+  hitbox,
+  hurtbox,
+  isActiveFrame,
+  overlaps,
+  projectileBox,
+  pushbox,
+} from "./boxes.ts";
+import {
   BODY_HALF_WIDTH,
-  BODY_HEIGHT,
-  type Box,
   GRAVITY,
   GROUND_FRICTION,
-  HEAVY,
-  HURTBOX,
-  JUMP_ATTACK,
+  type HitProperties,
   JUMP_HORIZONTAL_SPEED,
   JUMP_VELOCITY,
   KNOCKDOWN_FRAMES,
   LANDING_FRAMES,
   LAUNCH_HORIZONTAL_SPEED,
   LAUNCH_VELOCITY,
-  LIGHT,
   PREJUMP_FRAMES,
   PROJECTILE,
   PROJECTILE_MARGIN,
@@ -24,6 +27,7 @@ import {
   RUSH,
   RUSH_SPEED,
   STAGE_WIDTH,
+  totalFrames,
   WALK_BACK_SPEED,
   WALK_FORWARD_SPEED,
 } from "./character.ts";
@@ -33,11 +37,22 @@ import {
   type FrameInput,
   forwardBit,
   hasQuarterCircle,
+  horizontalDirection,
   INPUT_HISTORY,
   type Input,
   pressedAttacks,
 } from "./input.ts";
-import { Action, cloneState, type Fighter, type Projectile, Result, type State } from "./state.ts";
+import { ROUND_INTRO_FRAMES, ROUND_OVER_FRAMES, ROUNDS_TO_WIN } from "./rules.ts";
+import {
+  Action,
+  cloneState,
+  createRoundStart,
+  type Fighter,
+  Phase,
+  type Projectile,
+  Result,
+  type State,
+} from "./state.ts";
 
 type PlayerIndex = 0 | 1;
 const PLAYERS: readonly PlayerIndex[] = [0, 1];
@@ -46,17 +61,18 @@ const PLAYERS: readonly PlayerIndex[] = [0, 1];
 export function step(previous: State, inputs: FrameInput): State {
   const state = cloneState(previous);
   state.frame++;
-  if (state.result !== Result.Ongoing) return state;
+  if (state.phase === Phase.MatchOver) return state;
 
   state.historyHead = (state.historyHead + 1) % INPUT_HISTORY;
   for (const p of PLAYERS) state.inputHistory[p][state.historyHead] = inputs[p];
 
+  const fighting = state.phase === Phase.Fight;
   for (const p of PLAYERS) moveProjectile(state.projectiles[p]);
-  for (const p of PLAYERS) updateFighter(state, p);
+  for (const p of PLAYERS) updateFighter(state, p, fighting);
   separateFighters(state.fighters);
   for (const p of PLAYERS) updateFacing(state.fighters[p], state.fighters[otherPlayer(p)]);
-  resolveHits(state);
-  updateResult(state);
+  if (fighting) resolveHits(state);
+  advancePhase(state);
   return state;
 }
 
@@ -73,28 +89,13 @@ function historyReader(state: State, p: PlayerIndex): (age: number) => Input {
 // Fighter state machine
 // ---------------------------------------------------------------------------------------------
 
-function attackData(action: Action): AttackData | undefined {
-  switch (action) {
-    case Action.Light:
-      return LIGHT;
-    case Action.Heavy:
-      return HEAVY;
-    case Action.JumpAttack:
-      return JUMP_ATTACK;
-    case Action.Rush:
-      return RUSH;
-    default:
-      return undefined;
-  }
-}
-
 /** Total length of an action, or 0 when it only ends through an event (landing, input...). */
 function actionDuration(fighter: Fighter): number {
   const attack = attackData(fighter.action);
-  if (attack) return attack.startup + attack.active + attack.recovery;
+  if (attack) return totalFrames(attack);
   switch (fighter.action) {
     case Action.ProjectileThrow:
-      return PROJECTILE_THROW.startup + PROJECTILE_THROW.active + PROJECTILE_THROW.recovery;
+      return totalFrames(PROJECTILE_THROW);
     case Action.Prejump:
       return PREJUMP_FRAMES;
     case Action.Landing:
@@ -108,17 +109,8 @@ function actionDuration(fighter: Fighter): number {
   }
 }
 
-function isActiveFrame(fighter: Fighter, attack: AttackData): boolean {
-  const first = attack.startup - 1;
-  return fighter.actionFrame >= first && fighter.actionFrame < first + attack.active;
-}
-
 function isGroundedNeutral(action: Action): boolean {
   return action === Action.Idle || action === Action.WalkForward || action === Action.WalkBack;
-}
-
-function isInvulnerable(action: Action): boolean {
-  return action === Action.AirFall || action === Action.Knockdown || action === Action.Ko;
 }
 
 function setAction(fighter: Fighter, action: Action): void {
@@ -126,7 +118,8 @@ function setAction(fighter: Fighter, action: Action): void {
   fighter.actionFrame = 0;
 }
 
-function updateFighter(state: State, p: PlayerIndex): void {
+/** `canAct` is false outside of the fight phase: the fighter finishes its action, then idles. */
+function updateFighter(state: State, p: PlayerIndex, canAct: boolean): void {
   const fighter = state.fighters[p];
   if (fighter.hitstop > 0) {
     fighter.hitstop--;
@@ -140,8 +133,16 @@ function updateFighter(state: State, p: PlayerIndex): void {
   }
 
   const history = historyReader(state, p);
-  if (isGroundedNeutral(fighter.action)) startGroundAction(state, p, history);
-  else if (fighter.action === Action.Airborne) startAirAction(fighter, history);
+  if (!canAct) {
+    if (isGroundedNeutral(fighter.action)) {
+      if (fighter.action !== Action.Idle) setAction(fighter, Action.Idle);
+      fighter.vx = 0;
+    }
+  } else if (isGroundedNeutral(fighter.action)) {
+    startGroundAction(state, p, history);
+  } else if (fighter.action === Action.Airborne) {
+    startAirAction(fighter, history);
+  }
 
   if (
     fighter.action === Action.ProjectileThrow &&
@@ -173,14 +174,15 @@ function endAction(fighter: Fighter): void {
 function startGroundAction(state: State, p: PlayerIndex, history: (age: number) => Input): void {
   const fighter = state.fighters[p];
   const input = history(0);
-  const forward = forwardBit(fighter.facing);
-  const back = backBit(fighter.facing);
 
   if (pressedAttacks(input, history(1)) !== 0) {
     fighter.hasHit = 0;
-    if (hasQuarterCircle(history, forward) && state.projectiles[p].active === 0) {
+    if (
+      hasQuarterCircle(history, forwardBit(fighter.facing)) &&
+      state.projectiles[p].active === 0
+    ) {
       setAction(fighter, Action.ProjectileThrow);
-    } else if (hasQuarterCircle(history, back)) {
+    } else if (hasQuarterCircle(history, backBit(fighter.facing))) {
       setAction(fighter, Action.Rush);
     } else {
       setAction(fighter, (input & Button.Light) !== 0 ? Action.Light : Action.Heavy);
@@ -196,9 +198,13 @@ function startGroundAction(state: State, p: PlayerIndex, history: (age: number) 
     return;
   }
 
-  const holdsForward = (input & forward) !== 0 && (input & back) === 0;
-  const holdsBack = (input & back) !== 0 && (input & forward) === 0;
-  const next = holdsForward ? Action.WalkForward : holdsBack ? Action.WalkBack : Action.Idle;
+  const held = horizontalDirection(input);
+  const next =
+    held === fighter.facing
+      ? Action.WalkForward
+      : held === -fighter.facing
+        ? Action.WalkBack
+        : Action.Idle;
   if (next !== fighter.action) setAction(fighter, next);
   fighter.vx =
     next === Action.WalkForward
@@ -216,20 +222,9 @@ function startAirAction(fighter: Fighter, history: (age: number) => Input): void
   }
 }
 
-function horizontalDirection(input: Input): number {
-  const left = (input & Button.Left) !== 0;
-  const right = (input & Button.Right) !== 0;
-  if (left === right) return 0;
-  return right ? 1 : -1;
-}
-
 function applyPhysics(fighter: Fighter): void {
   if (fighter.action === Action.Rush) {
-    const firstActive = RUSH.startup - 1;
-    const moving =
-      fighter.hasHit === 0 &&
-      fighter.actionFrame >= firstActive &&
-      fighter.actionFrame < firstActive + RUSH.active;
+    const moving = fighter.hasHit === 0 && isActiveFrame(fighter, RUSH);
     fighter.vx = moving ? fighter.facing * RUSH_SPEED : applyFriction(fighter.vx);
   } else if (
     fighter.action === Action.Hitstun ||
@@ -287,8 +282,16 @@ function moveProjectile(projectile: Projectile): void {
   if (projectile.active === 0) return;
   projectile.x += projectile.vx;
   if (projectile.x < -PROJECTILE_MARGIN || projectile.x > STAGE_WIDTH + PROJECTILE_MARGIN) {
-    projectile.active = 0;
+    deactivate(projectile);
   }
+}
+
+/** Inactive projectiles are fully zeroed, so the state holds no stale positions. */
+function deactivate(projectile: Projectile): void {
+  projectile.active = 0;
+  projectile.x = 0;
+  projectile.y = 0;
+  projectile.vx = 0;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -307,11 +310,9 @@ function separateFighters(fighters: [Fighter, Fighter]): void {
   const [a, b] = fighters;
   clampToStage(a);
   clampToStage(b);
-  const verticalOverlap = a.y < b.y + BODY_HEIGHT && b.y < a.y + BODY_HEIGHT;
-  if (!verticalOverlap) return;
+  if (!overlaps(pushbox(a), pushbox(b))) return;
 
   const overlap = 2 * BODY_HALF_WIDTH - Math.abs(a.x - b.x);
-  if (overlap <= 0) return;
 
   let direction: number; // side of `a` relative to `b`
   if (a.x !== b.x) direction = a.x < b.x ? -1 : 1;
@@ -340,24 +341,8 @@ function separateFighters(fighters: [Fighter, Fighter]): void {
 // Hits
 // ---------------------------------------------------------------------------------------------
 
-interface WorldBox {
-  left: number;
-  right: number;
-  bottom: number;
-  top: number;
-}
-
-function toWorld(box: Box, x: number, y: number, facing: number): WorldBox {
-  const left = facing === 1 ? x + box.x : x - box.x - box.w;
-  return { left, right: left + box.w, bottom: y + box.y, top: y + box.y + box.h };
-}
-
-function overlaps(a: WorldBox, b: WorldBox): boolean {
-  return a.left < b.right && b.left < a.right && a.bottom < b.top && b.bottom < a.top;
-}
-
 interface Hit {
-  attack: AttackData;
+  attack: HitProperties;
   /** Direction the hit travels in: 1 = toward the right. */
   direction: number;
   projectile: boolean;
@@ -369,13 +354,11 @@ interface Hit {
  */
 function resolveHits(state: State): void {
   const [p0, p1] = state.projectiles;
-  if (p0.active === 1 && p1.active === 1) {
-    const box0 = toWorld(PROJECTILE.hitbox, p0.x, p0.y, Math.sign(p0.vx));
-    const box1 = toWorld(PROJECTILE.hitbox, p1.x, p1.y, Math.sign(p1.vx));
-    if (overlaps(box0, box1)) {
-      p0.active = 0;
-      p1.active = 0;
-    }
+  const box0 = projectileBox(p0);
+  const box1 = projectileBox(p1);
+  if (box0 && box1 && overlaps(box0, box1)) {
+    deactivate(p0);
+    deactivate(p1);
   }
 
   const hits: [Hit | undefined, Hit | undefined] = [findHit(state, 1), findHit(state, 0)];
@@ -390,7 +373,7 @@ function resolveHits(state: State): void {
     if (!hit) continue;
     const attacker = otherPlayer(defender);
     if (hit.projectile) {
-      state.projectiles[attacker].active = 0;
+      deactivate(state.projectiles[attacker]);
     } else {
       const fighter = state.fighters[attacker];
       fighter.hasHit = 1;
@@ -406,21 +389,19 @@ function resolveHits(state: State): void {
 /** The hit that `attacker` lands on the other player this frame, if any. Melee wins over projectile. */
 function findHit(state: State, attacker: PlayerIndex): Hit | undefined {
   const fighter = state.fighters[attacker];
-  const defender = state.fighters[otherPlayer(attacker)];
-  if (isInvulnerable(defender.action)) return undefined;
-  const hurtbox = toWorld(HURTBOX, defender.x, defender.y, defender.facing);
+  const hurt = hurtbox(state.fighters[otherPlayer(attacker)]);
+  if (!hurt) return undefined;
 
   const attack = attackData(fighter.action);
-  if (attack && fighter.hasHit === 0 && isActiveFrame(fighter, attack)) {
-    const hitbox = toWorld(attack.hitbox, fighter.x, fighter.y, fighter.facing);
-    if (overlaps(hitbox, hurtbox)) return { attack, direction: fighter.facing, projectile: false };
+  const hit = hitbox(fighter);
+  if (attack && hit && overlaps(hit, hurt)) {
+    return { attack, direction: fighter.facing, projectile: false };
   }
 
   const projectile = state.projectiles[attacker];
-  if (projectile.active === 1) {
-    const direction = Math.sign(projectile.vx);
-    const box = toWorld(PROJECTILE.hitbox, projectile.x, projectile.y, direction);
-    if (overlaps(box, hurtbox)) return { attack: PROJECTILE, direction, projectile: true };
+  const box = projectileBox(projectile);
+  if (box && overlaps(box, hurt)) {
+    return { attack: PROJECTILE, direction: Math.sign(projectile.vx), projectile: true };
   }
   return undefined;
 }
@@ -430,10 +411,7 @@ function isBlocking(state: State, defender: PlayerIndex, direction: number): boo
   const fighter = state.fighters[defender];
   const canBlock = isGroundedNeutral(fighter.action) || fighter.action === Action.Blockstun;
   if (!canBlock || fighter.y > 0) return false;
-  const input = historyReader(state, defender)(0);
-  const away = direction === 1 ? Button.Right : Button.Left;
-  const toward = direction === 1 ? Button.Left : Button.Right;
-  return (input & away) !== 0 && (input & toward) === 0;
+  return horizontalDirection(historyReader(state, defender)(0)) === direction;
 }
 
 function applyHit(fighter: Fighter, hit: Hit, blocked: boolean): void {
@@ -459,13 +437,61 @@ function applyHit(fighter: Fighter, hit: Hit, blocked: boolean): void {
   }
 }
 
-function updateResult(state: State): void {
+// ---------------------------------------------------------------------------------------------
+// Rounds
+// ---------------------------------------------------------------------------------------------
+
+function enterPhase(state: State, phase: Phase): void {
+  state.phase = phase;
+  state.phaseFrame = 0;
+}
+
+function advancePhase(state: State): void {
+  state.phaseFrame++;
+  switch (state.phase) {
+    case Phase.Intro:
+      if (state.phaseFrame >= ROUND_INTRO_FRAMES) enterPhase(state, Phase.Fight);
+      break;
+    case Phase.Fight:
+      state.timer--;
+      endRoundIfOver(state);
+      break;
+    case Phase.RoundOver:
+      if (state.phaseFrame >= ROUND_OVER_FRAMES) finishRound(state);
+      break;
+  }
+}
+
+/**
+ * A round ends on KO or when the timer runs out. A double KO or a time out with equal health
+ * gives the round to both players, so a match always ends.
+ */
+function endRoundIfOver(state: State): void {
   const [f0, f1] = state.fighters;
   const ko0 = f0.health === 0;
   const ko1 = f1.health === 0;
-  if (ko0) setAction(f0, Action.Ko);
-  if (ko1) setAction(f1, Action.Ko);
-  if (ko0 && ko1) state.result = Result.Draw;
-  else if (ko1) state.result = Result.Player1Wins;
-  else if (ko0) state.result = Result.Player2Wins;
+  if (ko0 || ko1) {
+    if (ko0) setAction(f0, Action.Ko);
+    if (ko1) setAction(f1, Action.Ko);
+    if (ko1) state.wins[0]++;
+    if (ko0) state.wins[1]++;
+    enterPhase(state, Phase.RoundOver);
+  } else if (state.timer === 0) {
+    if (f0.health >= f1.health) state.wins[0]++;
+    if (f1.health >= f0.health) state.wins[1]++;
+    enterPhase(state, Phase.RoundOver);
+  }
+}
+
+function finishRound(state: State): void {
+  const won0 = state.wins[0] >= ROUNDS_TO_WIN;
+  const won1 = state.wins[1] >= ROUNDS_TO_WIN;
+  if (won0 || won1) {
+    state.result = won0 && won1 ? Result.Draw : won0 ? Result.Player1Wins : Result.Player2Wins;
+    enterPhase(state, Phase.MatchOver);
+    return;
+  }
+  state.round++;
+  Object.assign(state, createRoundStart());
+  enterPhase(state, Phase.Intro);
 }

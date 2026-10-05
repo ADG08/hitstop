@@ -1,5 +1,6 @@
 import { MAX_HEALTH, STAGE_WIDTH, START_DISTANCE } from "./character.ts";
 import { INPUT_HISTORY } from "./input.ts";
+import { ROUND_FRAMES } from "./rules.ts";
 
 export const Action = {
   Idle: 0,
@@ -29,6 +30,17 @@ export const Result = {
   Draw: 3,
 } as const;
 export type Result = (typeof Result)[keyof typeof Result];
+
+export const Phase = {
+  /** Players are placed, inputs are ignored. */
+  Intro: 0,
+  Fight: 1,
+  /** After a KO or a time out: no more hits, inputs ignored. */
+  RoundOver: 2,
+  /** Final state: nothing changes anymore except the frame counter. */
+  MatchOver: 3,
+} as const;
+export type Phase = (typeof Phase)[keyof typeof Phase];
 
 /** Every field is an integer so that the state is exactly reproducible and hashable. */
 export interface Fighter {
@@ -64,6 +76,15 @@ export interface Projectile {
 export interface State {
   frame: number;
   result: Result;
+  phase: Phase;
+  /** Frames spent in the current phase. */
+  phaseFrame: number;
+  /** Current round, starting at 1. */
+  round: number;
+  /** Frames left in the current round. */
+  timer: number;
+  /** Rounds won by each player. */
+  wins: [number, number];
   fighters: [Fighter, Fighter];
   /** At most one projectile per player; slot i belongs to player i. */
   projectiles: [Projectile, Projectile];
@@ -95,11 +116,16 @@ function createProjectile(): Projectile {
   return { active: 0, x: 0, y: 0, vx: 0 };
 }
 
-export function createInitialState(): State {
+export type RoundStart = Pick<
+  State,
+  "timer" | "fighters" | "projectiles" | "inputHistory" | "historyHead"
+>;
+
+/** Everything that is reset at the start of each round: positions, health, timer, inputs. */
+export function createRoundStart(): RoundStart {
   const center = STAGE_WIDTH / 2;
   return {
-    frame: 0,
-    result: Result.Ongoing,
+    timer: ROUND_FRAMES,
     fighters: [
       createFighter(center - START_DISTANCE / 2, 1),
       createFighter(center + START_DISTANCE / 2, -1),
@@ -110,10 +136,27 @@ export function createInitialState(): State {
   };
 }
 
+export function createInitialState(): State {
+  return {
+    frame: 0,
+    result: Result.Ongoing,
+    phase: Phase.Intro,
+    phaseFrame: 0,
+    round: 1,
+    wins: [0, 0],
+    ...createRoundStart(),
+  };
+}
+
 export function cloneState(state: State): State {
   return {
     frame: state.frame,
     result: state.result,
+    phase: state.phase,
+    phaseFrame: state.phaseFrame,
+    round: state.round,
+    timer: state.timer,
+    wins: [state.wins[0], state.wins[1]],
     fighters: [{ ...state.fighters[0] }, { ...state.fighters[1] }],
     projectiles: [{ ...state.projectiles[0] }, { ...state.projectiles[1] }],
     inputHistory: [[...state.inputHistory[0]], [...state.inputHistory[1]]],
@@ -145,8 +188,10 @@ const PROJECTILE_FIELDS = [
   "vx",
 ] as const satisfies readonly (keyof Projectile)[];
 
+const HEADER_LENGTH = 9;
+
 export const SERIALIZED_LENGTH =
-  3 + 2 * FIGHTER_FIELDS.length + 2 * PROJECTILE_FIELDS.length + 2 * INPUT_HISTORY;
+  HEADER_LENGTH + 2 * FIGHTER_FIELDS.length + 2 * PROJECTILE_FIELDS.length + 2 * INPUT_HISTORY;
 
 /** Flat, fixed-order encoding of the state. Used for hashing, snapshots (rollback) and replays. */
 export function serialize(state: State): Int32Array {
@@ -155,6 +200,12 @@ export function serialize(state: State): Int32Array {
   out[i++] = state.frame;
   out[i++] = state.result;
   out[i++] = state.historyHead;
+  out[i++] = state.phase;
+  out[i++] = state.phaseFrame;
+  out[i++] = state.round;
+  out[i++] = state.timer;
+  out[i++] = state.wins[0];
+  out[i++] = state.wins[1];
   for (const fighter of state.fighters) {
     for (const field of FIGHTER_FIELDS) out[i++] = fighter[field];
   }
@@ -176,6 +227,11 @@ export function deserialize(data: Int32Array): State {
   const frame = next();
   const result = next() as Result;
   const historyHead = next();
+  const phase = next() as Phase;
+  const phaseFrame = next();
+  const round = next();
+  const timer = next();
+  const wins: [number, number] = [next(), next()];
   const readFighter = (): Fighter => {
     const fighter = {} as Record<(typeof FIGHTER_FIELDS)[number], number>;
     for (const field of FIGHTER_FIELDS) fighter[field] = next();
@@ -190,7 +246,19 @@ export function deserialize(data: Int32Array): State {
   const fighters: [Fighter, Fighter] = [readFighter(), readFighter()];
   const projectiles: [Projectile, Projectile] = [readProjectile(), readProjectile()];
   const inputHistory: [number[], number[]] = [readHistory(), readHistory()];
-  return { frame, result, fighters, projectiles, inputHistory, historyHead };
+  return {
+    frame,
+    result,
+    phase,
+    phaseFrame,
+    round,
+    timer,
+    wins,
+    fighters,
+    projectiles,
+    inputHistory,
+    historyHead,
+  };
 }
 
 /** 32-bit FNV-1a hash of the serialized state. Equal states always give equal hashes. */

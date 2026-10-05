@@ -1,5 +1,8 @@
 node_modules/
 .turbo/
+dist/
+test-results/
+playwright-report/
 .env
 .env.*
 *.log

@@ -1,6 +1,8 @@
+export * from "./boxes.ts";
 export * from "./character.ts";
 export * from "./input.ts";
 export * from "./replay.ts";
+export * from "./rules.ts";
 export * from "./state.ts";
 export { step } from "./step.ts";
 

@@ -1,0 +1,24 @@
+{
+  "name": "@hitstop/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser client",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc && tsc -p e2e",
+    "test": "vitest run",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@hitstop/sim": "workspace:*",
+    "pixi.js": "8.22.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22.20.5",
+    "vite": "8.3.2"
+  }
+}

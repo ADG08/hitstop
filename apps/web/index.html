@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hitstop</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0c0d11;
+        color: #e6e8ee;
+        font-family: system-ui, sans-serif;
+      }
+      #app {
+        display: grid;
+        place-items: center;
+        height: 100%;
+      }
+      #app canvas {
+        max-width: 100vw;
+        max-height: 100vh;
+        aspect-ratio: 16 / 9;
+      }
+      #debug {
+        position: fixed;
+        left: 8px;
+        bottom: 8px;
+        margin: 0;
+        padding: 8px 10px;
+        background: rgb(0 0 0 / 70%);
+        font: 13px/1.4 ui-monospace, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <pre id="debug" hidden></pre>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

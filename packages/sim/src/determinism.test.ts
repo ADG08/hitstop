@@ -80,7 +80,7 @@ describe("determinism", () => {
 
   it("matches the reference hash of the run (same value on every machine)", () => {
     // Changes when the rules or the frame data change: update with `pnpm test -- -u` on purpose.
-    expect(combine(first.hashes)).toMatchInlineSnapshot(`3808570942`);
+    expect(combine(first.hashes)).toMatchInlineSnapshot(`272369337`);
   });
 
   it("detects a single changed input from the frame it happens", () => {

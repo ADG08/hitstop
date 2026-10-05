@@ -30,6 +30,14 @@ export function backBit(facing: number): number {
 
 const ATTACK_BUTTONS = Button.Light | Button.Heavy;
 
+/** Horizontal direction held: 1 = right, -1 = left, 0 = none or both. */
+export function horizontalDirection(input: Input): number {
+  const left = (input & Button.Left) !== 0;
+  const right = (input & Button.Right) !== 0;
+  if (left === right) return 0;
+  return right ? 1 : -1;
+}
+
 /** Attack buttons pressed this frame (held now, not held on the previous frame). */
 export function pressedAttacks(current: Input, previous: Input): number {
   return current & ~previous & ATTACK_BUTTONS;
@@ -38,7 +46,6 @@ export function pressedAttacks(current: Input, previous: Input): number {
 type Step = "down" | "downToward" | "toward";
 
 function matches(input: Input, step: Step, toward: number): boolean {
-  const away = toward === Button.Right ? Button.Left : Button.Right;
   const down = (input & Button.Down) !== 0;
   const horizontal = input & (Button.Left | Button.Right);
   if ((input & Button.Up) !== 0) return false;
@@ -48,9 +55,12 @@ function matches(input: Input, step: Step, toward: number): boolean {
     case "downToward":
       return down && horizontal === toward;
     case "toward":
-      return !down && horizontal === toward && (input & away) === 0;
+      return !down && horizontal === toward;
   }
 }
+
+/** Steps of a quarter circle, newest first (the history is read backward). */
+const QUARTER_CIRCLE: readonly Step[] = ["toward", "downToward", "down"];
 
 /**
  * True when the history contains down, down+toward, toward in that order within MOTION_WINDOW
@@ -58,10 +68,9 @@ function matches(input: Input, step: Step, toward: number): boolean {
  * `history(0)` is the current frame, `history(1)` the previous one, and so on.
  */
 export function hasQuarterCircle(history: (age: number) => Input, toward: number): boolean {
-  const order: readonly Step[] = ["toward", "downToward", "down"];
   let step = 0;
-  for (let age = 0; age < MOTION_WINDOW && step < order.length; age++) {
-    const current = order[step];
+  for (let age = 0; age < MOTION_WINDOW && step < QUARTER_CIRCLE.length; age++) {
+    const current = QUARTER_CIRCLE[step];
     if (current !== undefined && matches(history(age), current, toward)) {
       step++;
     } else if (step === 0 && age >= 1) {
@@ -69,5 +78,5 @@ export function hasQuarterCircle(history: (age: number) => Input, toward: number
       return false;
     }
   }
-  return step === order.length;
+  return step === QUARTER_CIRCLE.length;
 }

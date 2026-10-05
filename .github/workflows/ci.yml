@@ -40,3 +40,24 @@ jobs:
 
       - name: Validate Docker Compose
         run: docker compose -f infra/docker-compose.yml config --quiet
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install browsers
+        run: pnpm --filter @hitstop/web exec playwright install --with-deps
+
+      - name: Browser tests (Chromium, Firefox, WebKit)
+        run: pnpm e2e

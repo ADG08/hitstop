@@ -2,7 +2,7 @@
 
 Jeu de combat 2D en ligne, jouable dans le navigateur, avec une IA entraînée par auto-jeu.
 
-**Statut :** en développement. Fondations du dépôt en place (M0).
+**Statut :** en développement. Simulation déterministe en place (M1) : un personnage, 8 actions, rejeu exact image par image.
 
 ## Prérequis
 
@@ -27,6 +27,7 @@ pnpm db:down       # arrêt
 packages/sim       simulation déterministe, partagée par le client, le serveur et l'entraînement
 packages/protocol  types partagés (messages réseau)
 infra/             Docker Compose
+tools/biome/       règle de lint : pas d'opération non déterministe dans la simulation
 ```
 
 ## Licence

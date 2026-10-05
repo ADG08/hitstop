@@ -1,0 +1,40 @@
+language js
+
+// Calls whose result can differ between runs or between JavaScript engines.
+// ECMA-262 marks Math transcendentals and Number::exponentiate (`**`, Math.pow)
+// as "implementation-approximated"; basic arithmetic, floor, trunc, sqrt and imul are exact.
+or {
+  `Math.random($...)`,
+  `Date.now($...)`,
+  `new Date($...)`,
+  `performance.now($...)`,
+  `Math.pow($...)`,
+  `$_ ** $_`,
+  `Math.$fn($...)` where {
+    $fn <: or {
+      `sin`,
+      `cos`,
+      `tan`,
+      `asin`,
+      `acos`,
+      `atan`,
+      `atan2`,
+      `sinh`,
+      `cosh`,
+      `tanh`,
+      `asinh`,
+      `acosh`,
+      `atanh`,
+      `exp`,
+      `expm1`,
+      `log`,
+      `log1p`,
+      `log2`,
+      `log10`,
+      `cbrt`,
+      `hypot`
+    }
+  }
+} as $call where {
+  register_diagnostic(span=$call, message="Non-deterministic or engine-dependent operation in the simulation. Use integer arithmetic and state-held values only.", severity="error")
+}

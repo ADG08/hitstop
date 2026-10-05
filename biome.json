@@ -32,5 +32,11 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/sim/src/**"],
+      "plugins": ["./tools/biome/no-nondeterminism.grit"]
+    }
+  ]
 }

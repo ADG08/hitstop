@@ -196,7 +196,8 @@ export class Renderer {
     );
   }
 
-  draw(state: State, showBoxes: boolean): void {
+  /** `announce` shows the big round texts; off behind the menus. */
+  draw(state: State, showBoxes: boolean, announce = true): void {
     this.fighters.forEach((view, player) => {
       view.update(state, player as 0 | 1);
     });
@@ -209,7 +210,7 @@ export class Renderer {
     this.drawBoxes(state, showBoxes);
 
     setText(this.timer, String(timerSeconds(state)));
-    const { title, subtitle } = announcement(state);
+    const { title, subtitle } = announce ? announcement(state) : { title: "", subtitle: "" };
     setText(this.title, title);
     setText(this.subtitle, subtitle);
     this.drawnFrame = state.frame;

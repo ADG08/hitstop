@@ -1,0 +1,23 @@
+{
+  "name": "@hitstop/server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Game server: rooms, authoritative matches over WebSocket",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "dev": "node --watch src/main.ts",
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/websocket": "11.3.3",
+    "@hitstop/protocol": "workspace:*",
+    "@hitstop/sim": "workspace:*",
+    "fastify": "5.12.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "@types/ws": "8.18.2"
+  }
+}

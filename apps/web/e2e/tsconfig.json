@@ -2,7 +2,8 @@
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["esnext", "dom"],
-    "types": ["node"]
+    "types": ["node"],
+    "jsx": "react-jsx"
   },
-  "include": [".", "../playwright.config.ts", "../src/debug-api.ts"]
+  "include": [".", "../playwright.config.ts", "../vite.config.ts", "../src/debug-api.ts"]
 }

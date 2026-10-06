@@ -13,15 +13,89 @@
         color: #e6e8ee;
         font-family: system-ui, sans-serif;
       }
-      #app {
+      button,
+      input {
+        font: inherit;
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: 1px solid #3a4150;
+        background: #1d212b;
+        color: inherit;
+      }
+      button:not(:disabled) {
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+      }
+      #game {
         display: grid;
         place-items: center;
         height: 100%;
       }
-      #app canvas {
+      #game canvas {
         max-width: 100vw;
         max-height: 100vh;
         aspect-ratio: 16 / 9;
+      }
+      .menu,
+      .result {
+        position: fixed;
+        inset: 50% auto auto 50%;
+        transform: translate(-50%, -50%);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        align-items: stretch;
+        min-width: 320px;
+        padding: 28px;
+        background: #0c0d11;
+        border: 1px solid #2a2f3a;
+        border-radius: 12px;
+        text-align: center;
+      }
+      .menu h1 {
+        margin: 0 0 8px;
+        letter-spacing: 0.08em;
+      }
+      .menu form {
+        display: flex;
+        gap: 8px;
+      }
+      .menu input {
+        flex: 1;
+        min-width: 0;
+        text-align: center;
+        text-transform: uppercase;
+        letter-spacing: 0.3em;
+      }
+      .code {
+        margin: 0;
+        font-size: 48px;
+        font-weight: bold;
+        letter-spacing: 0.2em;
+      }
+      .muted,
+      .hint {
+        color: #9aa3b2;
+      }
+      .error {
+        color: #ff8a8a;
+      }
+      .hint {
+        position: fixed;
+        top: 8px;
+        right: 12px;
+        font-size: 13px;
+      }
+      .banner {
+        position: fixed;
+        top: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 10px 16px;
+        border-radius: 8px;
+        background: #5a1f1f;
       }
       #debug {
         position: fixed;
@@ -35,8 +109,9 @@
     </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="game"></div>
+    <div id="ui"></div>
     <pre id="debug" hidden></pre>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

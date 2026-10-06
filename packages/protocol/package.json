@@ -2,7 +2,7 @@
   "name": "@hitstop/protocol",
   "version": "0.0.0",
   "private": true,
-  "description": "Shared network message types and schemas",
+  "description": "Shared protocol: messages, netcode (server confirmation, client prediction and rollback), network simulator",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -10,5 +10,8 @@
   "scripts": {
     "typecheck": "tsc",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@hitstop/sim": "workspace:*"
   }
 }

@@ -4,10 +4,10 @@
   "type": "module",
   "packageManager": "pnpm@12.9.1",
   "engines": {
-    "node": "^22.12.0"
+    "node": "^24.0.0"
   },
   "scripts": {
-    "dev": "pnpm --filter @hitstop/web dev",
+    "dev": "turbo run dev",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "lint": "biome lint .",
@@ -16,7 +16,8 @@
     "check:fix": "biome check --write .",
     "db:up": "docker compose -f infra/docker-compose.yml up -d",
     "db:down": "docker compose -f infra/docker-compose.yml down",
-    "e2e": "pnpm --filter @hitstop/web e2e"
+    "e2e": "pnpm --filter @hitstop/web e2e",
+    "server": "pnpm --filter @hitstop/server start"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

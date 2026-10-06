@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FixedStepClock, MAX_TICKS_PER_UPDATE } from "./loop.ts";
+import { FixedStepClock, MAX_TICKS_PER_UPDATE } from "./clock.ts";
 
 /** Total ticks produced by `seconds` of display frames at `hz`. */
 function ticksOver(seconds: number, hz: number): number {
